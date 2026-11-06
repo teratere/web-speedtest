@@ -15,7 +15,7 @@
     /* メーターニードルの回転アニメーション基準点 */
     #gauge-needle {
       transform-origin: 150px 145px;
-      transition: transform 0.25s cubic-bezier(0.1, 0.9, 0.2, 1);
+      transition: transform 0.2s cubic-bezier(0.1, 0.9, 0.2, 1);
     }
   </style>
 </head>
@@ -35,12 +35,12 @@
         </div>
         <div>
           <h1 class="text-base sm:text-lg font-bold text-slate-900">SpeedTest Hub</h1>
-          <p class="text-[11px] text-slate-400">回線速度・レイテンシ・ジッター測定</p>
+          <p class="text-[11px] text-slate-400">マルチ並列通信・回線ポテンシャル測定</p>
         </div>
       </div>
       <div class="text-[11px] font-bold px-3 py-1 bg-cyan-50 text-cyan-700 rounded-full border border-cyan-100 flex items-center gap-1.5">
         <span class="w-2 h-2 rounded-full bg-cyan-500 animate-pulse"></span>
-        <span>CDN Direct Test</span>
+        <span>4-Stream Multi-Session</span>
       </div>
     </header>
 
@@ -55,7 +55,7 @@
           
           <!-- アクティブアーク（グラデーション進捗） -->
           <path id="gauge-arc" d="M 30 145 A 120 120 0 0 1 270 145" fill="none" stroke="url(#speedGrad)" stroke-width="20" stroke-linecap="round"
-                stroke-dasharray="377" stroke-dashoffset="377" style="transition: stroke-dashoffset 0.25s ease-out;" />
+                stroke-dasharray="377" stroke-dashoffset="377" style="transition: stroke-dashoffset 0.2s ease-out;" />
 
           <defs>
             <linearGradient id="speedGrad" x1="0%" y1="0%" x2="100%" y2="0%">
@@ -136,7 +136,7 @@
         </div>
         <div>
           <div class="text-xs font-bold text-slate-700" id="judge-title">測定待機中</div>
-          <div class="text-[11px] text-slate-400 leading-tight mt-0.5" id="judge-desc">「測定を開始する」を押すとPingおよび下り転送速度を測定します</div>
+          <div class="text-[11px] text-slate-400 leading-tight mt-0.5" id="judge-desc">「測定を開始する」を押すとPingおよび下り実効速度を測定します</div>
         </div>
       </div>
 
@@ -153,48 +153,45 @@
 
   <script>
     let isTesting = false;
+    let gaugeMaxScale = 100; // 初期100Mbps、超えたら自動で300や500にスケールアップ
 
-    // ゲージ針 & アークの角度更新 (0〜100Mbpsを-90deg〜+90degにマッピング)
     function updateGauge(speedMbps) {
-      const maxScale = 100; // メーター上限目安
-      const clamped = Math.min(Math.max(speedMbps, 0), maxScale);
-      const ratio = clamped / maxScale;
+      if (speedMbps > gaugeMaxScale) {
+        gaugeMaxScale = speedMbps > 300 ? 500 : 300;
+      }
+      const clamped = Math.min(Math.max(speedMbps, 0), gaugeMaxScale);
+      const ratio = clamped / gaugeMaxScale;
       
       const angle = -90 + (ratio * 180);
       document.getElementById('gauge-needle').style.transform = `rotate(${angle}deg)`;
 
-      // stroke-dashoffset: 377 (0%) -> 0 (100%)
       const offset = 377 - (377 * ratio);
       document.getElementById('gauge-arc').style.strokeDashoffset = offset;
     }
 
-    // Ping / ジッター測定 (Cloudflare CDNエンドポイントを使用)
-    async function measurePing(iterations = 5) {
+    // Ping & ジッター測定
+    async function measurePing(iterations = 6) {
       const pings = [];
       const testUrl = 'https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css';
 
       for (let i = 0; i < iterations; i++) {
         const start = performance.now();
         try {
-          await fetch(`${testUrl}?cache_bypass=${Date.now()}_${i}`, {
+          await fetch(`${testUrl}?_cb=${Date.now()}_${i}`, {
             method: 'HEAD',
             cache: 'no-store',
             mode: 'no-cors'
           });
           const duration = performance.now() - start;
-          pings.push(duration);
-        } catch (e) {
-          // エラー時はフォールバック
-        }
-        await new Promise(r => setTimeout(r, 60));
+          // 初回ウォーミングアップの極端な遅延を除外
+          if (i > 0) pings.push(duration);
+        } catch (e) {}
+        await new Promise(r => setTimeout(r, 50));
       }
 
       if (pings.length === 0) return { avgPing: 0, jitter: 0 };
 
-      // 平均Ping
       const avgPing = pings.reduce((a, b) => a + b, 0) / pings.length;
-
-      // ジッター（隣接差分の平均値）
       let diffSum = 0;
       for (let i = 1; i < pings.length; i++) {
         diffSum += Math.abs(pings[i] - pings[i - 1]);
@@ -207,47 +204,55 @@
       };
     }
 
-    // 下り速度測定 (パブリックCDNのデータチャンク読み込み)
-    async function measureDownload() {
-      // Wikimedia Commons パブリックドメイン高解像度サンプル (~4.9MB)
-      const downloadTarget = 'https://upload.wikimedia.org/wikipedia/commons/3/3f/Fronalpstock_big.jpg';
-      const targetUrl = `${downloadTarget}?_cb=${Date.now()}`;
+    // 4並列ストリーミングダウンロード測定
+    async function measureDownloadParallel() {
+      // Cloudflareの公式スピードテスト用エンドポイント（20MB×4ストリーム）
+      const endpoint = 'https://speed.cloudflare.com/__down?bytes=20000000';
+      const streams = 4;
 
       const startTime = performance.now();
-      const response = await fetch(targetUrl, { cache: 'no-store' });
-      const reader = response.body.getReader();
-
-      let receivedBytes = 0;
+      let totalReceivedBytes = 0;
       let lastReportTime = performance.now();
-      let lastBytes = 0;
+      let lastReportBytes = 0;
 
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
+      const fetchTask = async (idx) => {
+        try {
+          const res = await fetch(`${endpoint}&stream=${idx}&_cb=${Date.now()}`, { cache: 'no-store' });
+          if (!res.body) return;
+          const reader = res.body.getReader();
 
-        receivedBytes += value.length;
-        const now = performance.now();
+          while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+            totalReceivedBytes += value.length;
 
-        // 120ms間隔でメーターをリアルタイム更新
-        if (now - lastReportTime > 120) {
-          const deltaSec = (now - lastReportTime) / 1000;
-          const deltaBits = (receivedBytes - lastBytes) * 8;
-          const currentMbps = (deltaBits / deltaSec) / 1000000;
+            const now = performance.now();
+            if (now - lastReportTime > 100) {
+              const deltaSec = (now - lastReportTime) / 1000;
+              const deltaBits = (totalReceivedBytes - lastReportBytes) * 8;
+              const instantMbps = (deltaBits / deltaSec) / 1000000;
 
-          document.getElementById('speed-val').textContent = currentMbps.toFixed(1);
-          updateGauge(currentMbps);
+              document.getElementById('speed-val').textContent = instantMbps.toFixed(1);
+              updateGauge(instantMbps);
 
-          lastReportTime = now;
-          lastBytes = receivedBytes;
+              lastReportTime = now;
+              lastReportBytes = totalReceivedBytes;
+            }
+          }
+        } catch (err) {
+          console.warn('ストリーム通信フォールバック', err);
         }
-      }
+      };
+
+      // 4並列で同時に回線へデータを流し込む
+      await Promise.all(Array.from({ length: streams }, (_, i) => fetchTask(i)));
 
       const totalSec = (performance.now() - startTime) / 1000;
-      const finalMbps = ((receivedBytes * 8) / totalSec) / 1000000;
+      const finalMbps = ((totalReceivedBytes * 8) / totalSec) / 1000000;
       return finalMbps;
     }
 
-    // 回線快適度判定の更新
+    // 快適度ジャッジ
     function updateJudge(mbps) {
       const box = document.getElementById('judge-box');
       const icon = document.getElementById('judge-icon');
@@ -267,21 +272,21 @@
         icon.innerHTML = '<i class="fa-solid fa-video"></i>';
         title.className = 'text-xs font-bold text-amber-900';
         title.textContent = '🟡 快適・標準 (30〜100Mbps)';
-        desc.textContent = 'テレワーク・Web会議・フルHD動画の視聴に最適な速度を維持しています。';
+        desc.textContent = 'テレワーク・Web会議・高画質動画の視聴に最適な速度を維持しています。';
       } else if (mbps >= 10) {
         box.className = 'w-full bg-orange-50 rounded-2xl p-4 border border-orange-100 flex items-center gap-3';
         icon.className = 'w-10 h-10 rounded-xl bg-orange-500 text-white flex items-center justify-center text-base shrink-0';
         icon.innerHTML = '<i class="fa-solid fa-globe"></i>';
         title.className = 'text-xs font-bold text-orange-900';
         title.textContent = '🟠 一般利用可 (10〜30Mbps)';
-        desc.textContent = 'WebブラウジングやSNS、標準画質の動画閲覧であれば支障なく利用できます。';
+        desc.textContent = 'WebブラウジングやSNS、標準画質の動画閲覧であれば問題なく利用できます。';
       } else {
         box.className = 'w-full bg-rose-50 rounded-2xl p-4 border border-rose-100 flex items-center gap-3';
         icon.className = 'w-10 h-10 rounded-xl bg-rose-500 text-white flex items-center justify-center text-base shrink-0';
         icon.innerHTML = '<i class="fa-solid fa-triangle-exclamation"></i>';
         title.className = 'text-xs font-bold text-rose-900';
         title.textContent = '🔴 低速 (10Mbps未満)';
-        desc.textContent = '高画質動画でバッファリングが発生したり、重いファイルの送受信に時間を要する可能性があります。';
+        desc.textContent = '動画の読み込み待ちや、大容量ファイルのやり取りに時間を要する可能性があります。';
       }
     }
 
@@ -303,10 +308,10 @@
       document.getElementById('card-ping').textContent = avgPing;
       document.getElementById('card-jitter').textContent = jitter;
 
-      // 2. 下り速度測定
-      phase.textContent = 'ダウンロード測定中...';
+      // 2. 4並列ダウンロード測定
+      phase.textContent = '並列ダウンロード測定中...';
       try {
-        const finalSpeed = await measureDownload();
+        const finalSpeed = await measureDownloadParallel();
         const displaySpeed = finalSpeed.toFixed(1);
 
         document.getElementById('speed-val').textContent = displaySpeed;
