@@ -1,0 +1,329 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>SpeedTest Hub - 回線速度・Ping測定ツール</title>
+  <!-- Tailwind CSS & FontAwesome -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600;700;800&family=Noto+Sans+JP:wght@400;500;700;800&display=swap');
+    body { font-family: 'Noto Sans JP', sans-serif; }
+    .mono { font-family: 'JetBrains Mono', monospace; }
+
+    /* メーターニードルの回転アニメーション基準点 */
+    #gauge-needle {
+      transform-origin: 150px 145px;
+      transition: transform 0.25s cubic-bezier(0.1, 0.9, 0.2, 1);
+    }
+  </style>
+</head>
+<body class="bg-slate-50 text-slate-800 min-h-screen p-4 sm:p-8 flex flex-col justify-between">
+
+  <div class="max-w-2xl mx-auto w-full space-y-6">
+
+    <!-- ヘッダー -->
+    <header class="bg-white rounded-3xl p-5 sm:p-6 border border-slate-200 shadow-sm flex items-center justify-between flex-wrap gap-4">
+      <div class="flex items-center gap-3">
+        <a href="../" class="inline-flex items-center gap-1.5 text-xs font-semibold text-slate-500 hover:text-slate-900 transition py-1.5 px-3 rounded-xl bg-slate-100 hover:bg-slate-200">
+          <i class="fa-solid fa-arrow-left text-[10px]"></i>
+          <span>Apps Hub</span>
+        </a>
+        <div class="w-10 h-10 rounded-2xl bg-cyan-500 text-white flex items-center justify-center text-lg shadow-md shadow-cyan-500/20">
+          <i class="fa-solid fa-gauge-high"></i>
+        </div>
+        <div>
+          <h1 class="text-base sm:text-lg font-bold text-slate-900">SpeedTest Hub</h1>
+          <p class="text-[11px] text-slate-400">回線速度・レイテンシ・ジッター測定</p>
+        </div>
+      </div>
+      <div class="text-[11px] font-bold px-3 py-1 bg-cyan-50 text-cyan-700 rounded-full border border-cyan-100 flex items-center gap-1.5">
+        <span class="w-2 h-2 rounded-full bg-cyan-500 animate-pulse"></span>
+        <span>CDN Direct Test</span>
+      </div>
+    </header>
+
+    <!-- メイン測定カード -->
+    <main class="bg-white rounded-3xl p-6 sm:p-8 border border-slate-200 shadow-sm flex flex-col items-center space-y-6">
+
+      <!-- タコメーター風スピードゲージ (SVG) -->
+      <div class="relative w-72 h-44 sm:w-80 sm:h-48 flex justify-center items-end">
+        <svg viewBox="0 0 300 170" class="w-full h-full">
+          <!-- ゲージ目盛り背景 -->
+          <path d="M 30 145 A 120 120 0 0 1 270 145" fill="none" stroke="#e2e8f0" stroke-width="20" stroke-linecap="round" />
+          
+          <!-- アクティブアーク（グラデーション進捗） -->
+          <path id="gauge-arc" d="M 30 145 A 120 120 0 0 1 270 145" fill="none" stroke="url(#speedGrad)" stroke-width="20" stroke-linecap="round"
+                stroke-dasharray="377" stroke-dashoffset="377" style="transition: stroke-dashoffset 0.25s ease-out;" />
+
+          <defs>
+            <linearGradient id="speedGrad" x1="0%" y1="0%" x2="100%" y2="0%">
+              <stop offset="0%" stop-color="#06b6d4" />
+              <stop offset="50%" stop-color="#3b82f6" />
+              <stop offset="100%" stop-color="#8b5cf6" />
+            </linearGradient>
+          </defs>
+
+          <!-- 指針（ニードル） -->
+          <g id="gauge-needle" style="transform: rotate(-90deg);">
+            <polygon points="146,145 154,145 151,32 149,32" fill="#0f172a" />
+            <circle cx="150" cy="145" r="10" fill="#0f172a" />
+            <circle cx="150" cy="145" r="4" fill="#ffffff" />
+          </g>
+        </svg>
+
+        <!-- メーター中央のリアルタイム速度値 -->
+        <div class="absolute bottom-0 flex flex-col items-center">
+          <div class="flex items-baseline gap-1">
+            <span id="speed-val" class="mono text-4xl sm:text-5xl font-extrabold text-slate-900 tracking-tight">0.0</span>
+            <span class="text-xs sm:text-sm font-bold text-slate-400">Mbps</span>
+          </div>
+          <span id="status-phase" class="text-xs font-semibold text-cyan-600 mt-1">待機中</span>
+        </div>
+      </div>
+
+      <!-- アクションボタン -->
+      <div class="w-full max-w-xs">
+        <button id="btn-start" onclick="startSpeedTest()" class="w-full py-3.5 bg-cyan-600 hover:bg-cyan-500 active:scale-98 text-white font-bold text-sm rounded-2xl shadow-lg shadow-cyan-600/25 transition flex items-center justify-center gap-2 cursor-pointer">
+          <i class="fa-solid fa-play text-xs"></i>
+          <span>測定を開始する</span>
+        </button>
+      </div>
+
+      <!-- 測定結果カードグリッド -->
+      <div class="w-full grid grid-cols-3 gap-3 pt-2">
+        
+        <!-- ダウンロード速度 -->
+        <div class="bg-slate-50 p-4 rounded-2xl border border-slate-100 flex flex-col items-center text-center">
+          <span class="text-[11px] font-bold text-slate-400 mb-1 flex items-center gap-1">
+            <i class="fa-solid fa-download text-cyan-500"></i> 下り速度
+          </span>
+          <div class="mono text-lg sm:text-xl font-extrabold text-slate-800">
+            <span id="card-speed">-</span>
+          </div>
+          <span class="text-[10px] text-slate-400 mt-0.5">Mbps</span>
+        </div>
+
+        <!-- Ping -->
+        <div class="bg-slate-50 p-4 rounded-2xl border border-slate-100 flex flex-col items-center text-center">
+          <span class="text-[11px] font-bold text-slate-400 mb-1 flex items-center gap-1">
+            <i class="fa-solid fa-arrows-rotate text-indigo-500"></i> Ping (遅延)
+          </span>
+          <div class="mono text-lg sm:text-xl font-extrabold text-slate-800">
+            <span id="card-ping">-</span>
+          </div>
+          <span class="text-[10px] text-slate-400 mt-0.5">ms</span>
+        </div>
+
+        <!-- ジッター -->
+        <div class="bg-slate-50 p-4 rounded-2xl border border-slate-100 flex flex-col items-center text-center">
+          <span class="text-[11px] font-bold text-slate-400 mb-1 flex items-center gap-1">
+            <i class="fa-solid fa-wave-square text-violet-500"></i> ジッター
+          </span>
+          <div class="mono text-lg sm:text-xl font-extrabold text-slate-800">
+            <span id="card-jitter">-</span>
+          </div>
+          <span class="text-[10px] text-slate-400 mt-0.5">ms</span>
+        </div>
+
+      </div>
+
+      <!-- 判定ジャッジバー -->
+      <div id="judge-box" class="w-full bg-slate-50 rounded-2xl p-4 border border-slate-100 flex items-center gap-3 transition-colors">
+        <div id="judge-icon" class="w-10 h-10 rounded-xl bg-slate-200 text-slate-500 flex items-center justify-center text-base shrink-0">
+          <i class="fa-solid fa-circle-question"></i>
+        </div>
+        <div>
+          <div class="text-xs font-bold text-slate-700" id="judge-title">測定待機中</div>
+          <div class="text-[11px] text-slate-400 leading-tight mt-0.5" id="judge-desc">「測定を開始する」を押すとPingおよび下り転送速度を測定します</div>
+        </div>
+      </div>
+
+    </main>
+
+  </div>
+
+  <!-- フッター（標準免責事項） -->
+  <footer class="mt-8 pb-4">
+    <p class="text-[11px] text-slate-400 text-center">
+      ※個人開発プロトタイプにつき無保証・自己責任にてご利用ください（データは端末内完結・サポート対象外）
+    </p>
+  </footer>
+
+  <script>
+    let isTesting = false;
+
+    // ゲージ針 & アークの角度更新 (0〜100Mbpsを-90deg〜+90degにマッピング)
+    function updateGauge(speedMbps) {
+      const maxScale = 100; // メーター上限目安
+      const clamped = Math.min(Math.max(speedMbps, 0), maxScale);
+      const ratio = clamped / maxScale;
+      
+      const angle = -90 + (ratio * 180);
+      document.getElementById('gauge-needle').style.transform = `rotate(${angle}deg)`;
+
+      // stroke-dashoffset: 377 (0%) -> 0 (100%)
+      const offset = 377 - (377 * ratio);
+      document.getElementById('gauge-arc').style.strokeDashoffset = offset;
+    }
+
+    // Ping / ジッター測定 (Cloudflare CDNエンドポイントを使用)
+    async function measurePing(iterations = 5) {
+      const pings = [];
+      const testUrl = 'https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css';
+
+      for (let i = 0; i < iterations; i++) {
+        const start = performance.now();
+        try {
+          await fetch(`${testUrl}?cache_bypass=${Date.now()}_${i}`, {
+            method: 'HEAD',
+            cache: 'no-store',
+            mode: 'no-cors'
+          });
+          const duration = performance.now() - start;
+          pings.push(duration);
+        } catch (e) {
+          // エラー時はフォールバック
+        }
+        await new Promise(r => setTimeout(r, 60));
+      }
+
+      if (pings.length === 0) return { avgPing: 0, jitter: 0 };
+
+      // 平均Ping
+      const avgPing = pings.reduce((a, b) => a + b, 0) / pings.length;
+
+      // ジッター（隣接差分の平均値）
+      let diffSum = 0;
+      for (let i = 1; i < pings.length; i++) {
+        diffSum += Math.abs(pings[i] - pings[i - 1]);
+      }
+      const jitter = pings.length > 1 ? diffSum / (pings.length - 1) : 0;
+
+      return {
+        avgPing: Math.round(avgPing),
+        jitter: Math.round(jitter)
+      };
+    }
+
+    // 下り速度測定 (パブリックCDNのデータチャンク読み込み)
+    async function measureDownload() {
+      // Wikimedia Commons パブリックドメイン高解像度サンプル (~4.9MB)
+      const downloadTarget = 'https://upload.wikimedia.org/wikipedia/commons/3/3f/Fronalpstock_big.jpg';
+      const targetUrl = `${downloadTarget}?_cb=${Date.now()}`;
+
+      const startTime = performance.now();
+      const response = await fetch(targetUrl, { cache: 'no-store' });
+      const reader = response.body.getReader();
+
+      let receivedBytes = 0;
+      let lastReportTime = performance.now();
+      let lastBytes = 0;
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        receivedBytes += value.length;
+        const now = performance.now();
+
+        // 120ms間隔でメーターをリアルタイム更新
+        if (now - lastReportTime > 120) {
+          const deltaSec = (now - lastReportTime) / 1000;
+          const deltaBits = (receivedBytes - lastBytes) * 8;
+          const currentMbps = (deltaBits / deltaSec) / 1000000;
+
+          document.getElementById('speed-val').textContent = currentMbps.toFixed(1);
+          updateGauge(currentMbps);
+
+          lastReportTime = now;
+          lastBytes = receivedBytes;
+        }
+      }
+
+      const totalSec = (performance.now() - startTime) / 1000;
+      const finalMbps = ((receivedBytes * 8) / totalSec) / 1000000;
+      return finalMbps;
+    }
+
+    // 回線快適度判定の更新
+    function updateJudge(mbps) {
+      const box = document.getElementById('judge-box');
+      const icon = document.getElementById('judge-icon');
+      const title = document.getElementById('judge-title');
+      const desc = document.getElementById('judge-desc');
+
+      if (mbps >= 100) {
+        box.className = 'w-full bg-emerald-50 rounded-2xl p-4 border border-emerald-100 flex items-center gap-3';
+        icon.className = 'w-10 h-10 rounded-xl bg-emerald-500 text-white flex items-center justify-center text-base shrink-0';
+        icon.innerHTML = '<i class="fa-solid fa-bolt"></i>';
+        title.className = 'text-xs font-bold text-emerald-900';
+        title.textContent = '🟢 超快適 (100Mbps以上)';
+        desc.textContent = '4K動画ストリーミング・大容量ダウンロード・オンラインゲームも快適に動作します。';
+      } else if (mbps >= 30) {
+        box.className = 'w-full bg-amber-50 rounded-2xl p-4 border border-amber-100 flex items-center gap-3';
+        icon.className = 'w-10 h-10 rounded-xl bg-amber-500 text-white flex items-center justify-center text-base shrink-0';
+        icon.innerHTML = '<i class="fa-solid fa-video"></i>';
+        title.className = 'text-xs font-bold text-amber-900';
+        title.textContent = '🟡 快適・標準 (30〜100Mbps)';
+        desc.textContent = 'テレワーク・Web会議・フルHD動画の視聴に最適な速度を維持しています。';
+      } else if (mbps >= 10) {
+        box.className = 'w-full bg-orange-50 rounded-2xl p-4 border border-orange-100 flex items-center gap-3';
+        icon.className = 'w-10 h-10 rounded-xl bg-orange-500 text-white flex items-center justify-center text-base shrink-0';
+        icon.innerHTML = '<i class="fa-solid fa-globe"></i>';
+        title.className = 'text-xs font-bold text-orange-900';
+        title.textContent = '🟠 一般利用可 (10〜30Mbps)';
+        desc.textContent = 'WebブラウジングやSNS、標準画質の動画閲覧であれば支障なく利用できます。';
+      } else {
+        box.className = 'w-full bg-rose-50 rounded-2xl p-4 border border-rose-100 flex items-center gap-3';
+        icon.className = 'w-10 h-10 rounded-xl bg-rose-500 text-white flex items-center justify-center text-base shrink-0';
+        icon.innerHTML = '<i class="fa-solid fa-triangle-exclamation"></i>';
+        title.className = 'text-xs font-bold text-rose-900';
+        title.textContent = '🔴 低速 (10Mbps未満)';
+        desc.textContent = '高画質動画でバッファリングが発生したり、重いファイルの送受信に時間を要する可能性があります。';
+      }
+    }
+
+    // 測定シーケンス実行
+    async function startSpeedTest() {
+      if (isTesting) return;
+      isTesting = true;
+
+      const btn = document.getElementById('btn-start');
+      const phase = document.getElementById('status-phase');
+
+      btn.disabled = true;
+      btn.classList.add('opacity-50', 'cursor-not-allowed');
+      btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin text-xs"></i> <span>測定中...</span>';
+
+      // 1. Ping / ジッター測定
+      phase.textContent = 'レイテンシ測定中...';
+      const { avgPing, jitter } = await measurePing();
+      document.getElementById('card-ping').textContent = avgPing;
+      document.getElementById('card-jitter').textContent = jitter;
+
+      // 2. 下り速度測定
+      phase.textContent = 'ダウンロード測定中...';
+      try {
+        const finalSpeed = await measureDownload();
+        const displaySpeed = finalSpeed.toFixed(1);
+
+        document.getElementById('speed-val').textContent = displaySpeed;
+        document.getElementById('card-speed').textContent = displaySpeed;
+        updateGauge(finalSpeed);
+        updateJudge(finalSpeed);
+        phase.textContent = '測定完了';
+      } catch (err) {
+        phase.textContent = '測定エラー';
+        document.getElementById('status-phase').textContent = '通信失敗';
+      } finally {
+        isTesting = false;
+        btn.disabled = false;
+        btn.classList.remove('opacity-50', 'cursor-not-allowed');
+        btn.innerHTML = '<i class="fa-solid fa-rotate-right text-xs"></i> <span>再測定する</span>';
+      }
+    }
+  </script>
+</body>
+</html>
