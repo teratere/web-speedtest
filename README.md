@@ -1,2 +1,56 @@
-# web-speedtest
-A client-side Network Speed &amp; Latency Checker built with Tailwind CSS and SVG gauge. Features real-time download Mbps, ping/jitter measurement, and zero-dependency testing.
+# 🌐 SpeedTest Hub - 回線速度・Ping測定ツール
+
+ブラウザ上でワンタップで下り回線速度（ダウンロードMbps）、Ping（応答速度）、ジッター（回線の揺らぎ）を測定し、快適度を自動判定するシングルファイルWebツールです。
+
+> **🚀 Live Demo:**  
+> ブラウザで今すぐ測定できる公開版はこちら 👉 **[https://selfup.net/speed/](https://selfup.net/speed/)**
+
+---
+
+## 🌟 主な機能 (Features)
+
+### 1. リアルタイム・スピード測定
+- **タコメーター風 SVG ゲージ:** 測定中のスループット（Mbps）に連動してニードル（指針）とグラデーションアークがダイナミックに跳ね上がるアニメーション演出
+- **下り通信速度 (Mbps):** パブリックCDNのエンドポイントから実データを取得し、通信時間と受信バイト数から実効速度を算出
+
+### 2. ネットワーク品質診断 (Ping & Jitter)
+- **Ping（レイテンシ）:** 複数回のミリ秒往復時間から平均応答速度を算出
+- **ジッター（安定性）:** Pingのばらつき（揺らぎ）を算出し、回線の安定性を可視化
+
+### 3. 回線快適度ジャッジ
+- 測定結果に基づき、日常の利用目安（4K動画/オンラインゲーム、Web会議、標準ブラウジング等）を色分けバッジで自動評価
+
+### 4. 完全クライアントサイド動作
+- バックエンドサーバーを必要とせず、ブラウザの Fetch API / Performance API のみで完結
+
+---
+
+## 🛠 開発について (About)
+
+このプロジェクトは、**生成AI（Gemini）を活用したバイブコーディング（対話型プログラミング）**によって制作されたシングルファイルWebアプリケーションです。
+
+- **企画・仕様設計・ディレクション:** teratere
+- **コード生成・実装:** Gemini
+- **構成技術:** HTML5 / Tailwind CSS (CDN) / Vanilla JavaScript / SVG / FontAwesome
+
+---
+
+## 🔗 関連リンク (Links & Related Apps)
+
+- 🌐 **Web App (Live):** [https://selfup.net/speed/](https://selfup.net/speed/)
+- 🏠 **Apps Hub:** [https://selfup.net/](https://selfup.net/) （公開Webツール・アプリ一覧）
+- 📝 **Author's note:** [https://note.com/<あなたのnoteID>](https://note.com/<あなたのnoteID>)
+
+---
+
+## ⚠️ 免責事項 (Disclaimer)
+
+- 本ツールは個人がAIを活用して実験・学習目的で制作したプロトタイプです。
+- 測定値はブラウザの通信環境や経由するCDNサーバーの状況に依存する目安値であり、回線事業者の公式測定や厳密な通信帯域を保証するものではありません。
+- 本ツールの利用により生じたいかなる損害・不都合についても、開発者は一切の責任を負いません（すべて自己責任にてご利用ください）。
+
+---
+
+## 📄 ライセンス (License)
+
+[MIT License](LICENSE)
